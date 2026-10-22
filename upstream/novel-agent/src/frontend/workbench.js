@@ -21,7 +21,7 @@ $('generate').textContent = '创建任务并保存材料 ↗';
 $('generate').classList.remove('primary'); $('generate').classList.add('secondary');
 document.querySelector('.controls').insertAdjacentHTML('afterend', '<div id="version-confirm" class="version-confirm" hidden><label><input type="checkbox" id="confirm-versions">我已核对本章及前文中入口未收录的正文版本</label></div><select id="task-history" class="history-select" aria-label="历史任务"><option>本章暂无任务</option></select><div id="task-banner" class="task-banner" hidden></div>');
 document.querySelector('.flow').insertAdjacentHTML('afterend', '<div class="automation-card"><div><strong>Gemini 写作 · Codex 审纲/审稿 · 新会话独立终审</strong><span id="provider-status">正在连接本机模型 CLI…</span></div><button id="automatic-run" class="primary" disabled>一键运行本章</button><details><summary>查看运行情况</summary><div id="readiness-details" class="readiness-details">正在检查 CLI 登录与本章状态。</div><div id="automatic-result" class="readiness-details"></div></details></div>');
-document.querySelector('.tabs').insertAdjacentHTML('beforeend', '<button data-tab="reports">审查记录</button><button data-tab="changes">文件变化</button>');
+document.querySelector('.tabs').insertAdjacentHTML('beforeend', '<button data-tab="changes">文件变化</button>');
 $('content').insertAdjacentHTML('afterend', '<div id="task-pane" class="task-pane" hidden></div>');
 $('focus').insertAdjacentHTML('afterend', '<details class="materials"><summary>本章补充材料 <span class="muted">· 核心设定自动附入，可勾选人物与卷纲</span></summary><p class="materials-note">文风、验收规则、最近三章正文和对应审查技能会自动整理。勾选的补充文件将保存到本次任务快照。</p><div id="skill-tags" class="skill-tags"></div><div id="materials-list" class="materials-list"></div></details>');
 document.querySelector('.notice').textContent = '选中章节后点“一键运行本章”。Gemini 负责生成/返修细纲和正文，Codex 审纲、审稿，再以全新会话终审。终审通过后由作者确认定稿；若追踪状态异常，候选稿会留在本地，不会覆盖原稿。';
@@ -61,7 +61,6 @@ async function selectBook(id) {
     $('book-shelf').open=false;
     $('book-shelf-label').textContent=book.title;
     $('book-shelf-label').title=book.title;
-    $('process-details').open=false;
     $('search').value = '';
     selectedMaterials = new Set();
     materialFiles = [];
@@ -127,8 +126,8 @@ async function selectChapter(number) {
     $('automatic-run').textContent = workflowMode()==='outline'?'开始审阅细纲':'开始全面写作';
     renderPhases();
     $('automatic-result').textContent = '尚未启动本章任务。';
-    $('process-details').open=false;
-    $('process-detail-count').textContent='报告、修改建议与运行日志';
+    $('run-result-summary').textContent='尚未开始';
+    $('manual-task-record').open=false;
     $('stage').value = chapter?.draft?.length ? 'final' : 'outline';
     $('confirm-versions').checked = false;
     $('version-confirm').hidden = !book.chapters.some(c => c.source_warning && c.number <= number && c.number >= number - 3);
@@ -162,7 +161,7 @@ async function loadTask(id, showReports = true) {
     if (token !== selectionRevision || loadToken !== taskLoadRevision || detail.book_id !== book.id || detail.chapter !== chapter?.number) return;
     selectedTask = detail;
     $('stage').value = detail.stage;
-    if (showReports) tab = 'reports';
+    if (showReports) $('manual-task-record').open = true;
     renderHistory(); renderContent();
 }
 async function refresh() {
@@ -185,12 +184,13 @@ async function refresh() {
 async function renderContent() {
     const version = ++revision;
     document.querySelectorAll('[data-tab]').forEach(el => el.classList.toggle('on', el.dataset.tab === tab));
-    $('content').hidden = tab === 'reports'; $('task-pane').hidden = tab !== 'reports';
+    $('content').hidden = false;
+    $('manual-task-record').hidden = !selectedTask;
+    renderReports();
     $('content').classList.toggle('diff-view', tab === 'changes');
     $('content').classList.toggle('source-view', ['packet','changes'].includes(tab));
     $('meta').textContent = selectedTask ? `任务 ${selectedTask.id.slice(0,8)} · ${stamp(selectedTask.created_at)} · 原稿只读` : '尚未创建任务 · 原稿只读';
     $('download').disabled = !selectedTask;
-    if (tab === 'reports') { renderReports(); return; }
     if (tab === 'packet') { $('content').textContent = selectedTask?.packet.text || '先选择任务阶段，点击“创建任务并保存材料”。\n\n工作台会保存这一版本的材料；你可以下载后交给 Gemini 或 Codex 执行，再将报告回填到本任务。'; return; }
     if (tab === 'changes') {
         $('content').textContent = selectedTask ? '正在对比送审版本与当前文件…' : '创建任务后，可在这里检查材料是否变化。';
@@ -214,8 +214,8 @@ async function renderContent() {
 }
 function renderReports() {
     $('task-pane').dataset.taskId = selectedTask?.id || '';
-    if (!selectedTask && displayedRun) { $('task-pane').innerHTML = $('automatic-result').innerHTML.replace('id="run-reviews"',''); return; }
-    if (!selectedTask) { $('task-pane').innerHTML = '<div class="empty">本章还没有审阅报告。<br>选择任务后点击开始，每一轮报告都会保存在这里。</div>'; return; }
+    if (!selectedTask) { $('task-pane').innerHTML = ''; return; }
+    $('task-pane').hidden = false;
     const task = selectedTask;
     const saved = reportDrafts.get(task.id) || {reviewer:'', content:'', verdict:task.stage === 'draft' ? 'submitted' : 'revise'};
     const options = task.stage === 'draft' ? ['submitted'] : ['revise','blocked','pass'];
@@ -402,7 +402,6 @@ advanced.addEventListener('toggle', () => document.body.classList.toggle('show-a
 document.querySelector('.top').querySelector('span').textContent = '写作工作台';
 document.querySelector('.top .pill').textContent = '原稿保留 · 修改稿另存';
 document.querySelector('.notice').textContent = '日常只需选书、选章节、点启动。Gemini 负责写作，Codex 负责审阅与独立终审；产生的修改稿会另存，供你确认。';
-document.querySelector('[data-tab="reports"]').textContent = '审阅结果';
 document.querySelector('[data-tab="rules"]').textContent = '写作规则';
 $('refresh').textContent = '刷新';
 style.textContent += `
@@ -444,26 +443,30 @@ function renderPhases(run=null){
     const names=workflowMode()==='outline'?['审阅细纲','修改细纲','最终细纲审阅']:['审阅细纲','修改细纲','写正文','审阅正文','修改正文','最终正文审阅'];
     const phases=run?.result?.phases || names.map(name=>({name,state:'pending'}));
     const percent=run?.result?.progress??0;
-    $('workflow-progress').innerHTML=`<div class="progress-caption"><strong>${run?esc(run.step):'等待启动'}</strong><span>${percent}% · 按完成步骤计算</span></div><progress max="100" value="${percent}" aria-label="流程完成进度"></progress><ol class="phase-list">${phases.map(p=>`<li class="${esc(p.state)}">${p.state==='done'?'✓':p.state==='active'?'●':'○'} ${esc(p.name)}</li>`).join('')}</ol><p class="muted">${run?`任务开始于 ${stamp(run.created_at)} · 本轮状态更新 ${stamp(run.updated_at)}`:'模型生成时进度条不会假装前进；每步结束后更新。无需修改时，该修改步骤自动跳过。'}</p>`;
+    const legacy=run&&!Number.isFinite(run.result?.progress);
+    const stage=run?({queued:'等待运行',running:'正在处理',completed:'已完成',needs_author:'等待作者确认',blocked:'已暂停',failed:'未完成'}[run.step]||run.step):'等待启动';
+    $('workflow-progress').innerHTML=`<div class="progress-caption"><strong>${esc(stage)}</strong><span>${legacy?'历史任务未记录步骤进度':`${percent}% · 按完成步骤计算`}</span></div><progress max="100" value="${percent}" aria-label="流程完成进度" ${legacy?'hidden':''}></progress>${legacy?'':`<ol class="phase-list">${phases.map(p=>`<li class="${esc(p.state)}">${p.state==='done'?'✓':p.state==='active'?'●':'○'} ${esc(p.name)}</li>`).join('')}</ol>`}<p class="muted">${run?`任务开始于 ${stamp(run.created_at)} · 本轮状态更新 ${stamp(run.updated_at)}`:'模型生成时进度条不会假装前进；每步结束后更新。无需修改时，该修改步骤自动跳过。'}</p>`;
 }
 async function paintRun(run,token){
     displayedRun=run;
     chapterRuns.set(`${run.book_id}:${run.chapter}`,run);
     updateChapterRunBadges();
-    $('process-detail-count').textContent=`${(run.result?.reviews||run.result?.steps||[]).length} 份报告 · ${['blocked','failed'].includes(run.status)?'已暂停，点击查看原因':'点击查看详细内容'}`;
+    $('run-result-summary').textContent=`${(run.result?.reviews||run.result?.steps||[]).length} 份报告 · ${{queued:'等待运行',running:'正在处理',completed:'已完成',needs_author:'待确认',blocked:'已暂停',failed:'未完成'}[run.status]||run.status}`;
     renderPhases(run);
     document.querySelectorAll('[name="workflow-mode"],#max-revisions,#codex-model,#gemini-model').forEach(el=>el.disabled=['queued','running'].includes(run.status));
     const reviews=run.result?.reviews||run.result?.steps||[];
-    const markdown=await post('/api/local/markdown',{text:run.message});
+    const finalReport=run.status==='completed'?run.result?.final_report:null;
+    const lastProblem=['blocked','failed','needs_author'].includes(run.status)&&!run.result?.pause_reason?reviews.at(-1)?.report:null;
+    const markdown=await post('/api/local/markdown',{text:run.message+(finalReport?'\n\n## 最终结论\n\n'+finalReport:'')+(lastProblem?'\n\n## 尚未解决的问题\n\n'+lastProblem:'')});
     if(token!==selectionRevision)return;
     $('automatic-result').innerHTML=`<div class="markdown-reader ${['blocked','failed'].includes(run.status)?'failure-reason':''}">${markdown.html}</div><div class="artifact-links">${(run.artifacts||[]).map(a=>`<a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.name)}</a>`).join('')}</div><div id="run-reviews"></div>`;
     for(const [i,r] of reviews.entries()){
+        if(finalReport&&i===reviews.length-1&&r.report===finalReport)continue;
         const html=await post('/api/local/markdown',{text:r.report||''});
         if(token!==selectionRevision)return;
-        $('run-reviews').insertAdjacentHTML('beforeend',`<details class="run-review" ${i===reviews.length-1?'open':''}><summary>${esc(r.stage)} · ${esc({PASS:'通过',REVISE:'需修改',BLOCKED:'待作者裁定'}[r.verdict]||r.verdict)} · ${esc(r.reviewer)}</summary><div class="markdown-reader">${html.html}</div>${r.revision_brief?`<p><strong>修改要点：</strong>${esc(r.revision_brief)}</p>`:''}</details>`);
+        $('run-reviews').insertAdjacentHTML('beforeend',`<details class="run-review"><summary>${esc(r.stage)} · ${esc({PASS:'通过',REVISE:'需修改',BLOCKED:'待作者裁定'}[r.verdict]||r.verdict)} · ${esc(r.reviewer)}</summary><div class="markdown-reader">${html.html}</div>${r.revision_brief?`<p><strong>修改要点：</strong>${esc(r.revision_brief)}</p>`:''}</details>`);
     }
     if(run.result?.events?.length)$('automatic-result').insertAdjacentHTML('beforeend',`<details class="run-review"><summary>完整运行时间线 · ${run.result.events.length} 条</summary><ol>${run.result.events.map(e=>`<li><strong>${stamp(e.at)} · ${esc(e.stage)}</strong><p>${esc(e.message)}</p></li>`).join('')}</ol></details>`);
-    if(tab==='reports'&&!selectedTask)renderReports();
 }
 document.querySelectorAll('[name="workflow-mode"]').forEach(el=>el.onchange=()=>{renderPhases();$('automatic-run').textContent=workflowMode()==='outline'?'开始审阅细纲':'开始全面写作';if(book&&chapter)loadReadiness(book.id,chapter.number);});
 async function loadUsage(){
@@ -507,9 +510,13 @@ function setNavigationCollapsed(collapsed){
 }
 $('navigation-toggle').onclick=()=>setNavigationCollapsed(!document.body.classList.contains('nav-collapsed'));
 shelf.after(chapterBrowser);
-const processing=document.createElement('details');
-processing.id='process-details';processing.innerHTML='<summary>处理详情 <span id="process-detail-count">报告、修改建议与运行日志</span></summary>';
-$('automatic-result').before(processing);processing.append($('automatic-result'));
+const processing=document.createElement('section');
+processing.id='run-results';processing.setAttribute('aria-labelledby','run-results-title');
+processing.innerHTML='<header class="run-results-head"><h2 id="run-results-title">运行与结果</h2><span id="run-result-summary">尚未开始</span></header>';
+$('automatic-result').before(processing);processing.append($('workflow-progress'),$('automatic-result'));
+const manualRecord=document.createElement('details');
+manualRecord.id='manual-task-record';manualRecord.hidden=true;manualRecord.innerHTML='<summary>手动任务记录与作者确认</summary>';
+processing.append(manualRecord);manualRecord.append($('task-pane'));
 const account=document.createElement('details');account.className='account-disclosure';
 account.innerHTML='<summary>账号与额度</summary>';
 document.querySelector('.usage-panel').before(account);account.append(document.querySelector('.usage-panel'));

@@ -55,10 +55,14 @@ main { margin-left: var(--sidebar-width); max-width: none; min-height: 100vh; pa
 #content.markdown-reader > * { max-width: 980px; margin-left: auto; margin-right: auto; }
 #content.markdown-reader ul, #content.markdown-reader ol { padding-left: 28px; }
 .run-card.automation-card { margin-bottom: 24px; }
-#process-details { grid-column: 1 / -1; border-top: 1px solid #b8cabd; padding-top: 13px; }
-#process-details > summary { color: #365c44; font-size: 13px; font-weight: 600; cursor: pointer; }
-#process-detail-count { display: inline; margin-left: 10px; color: #6c7d71; font-size: 11px; font-weight: 400; }
-#automatic-result { margin-top: 14px; max-height: 65vh; }
+#run-results { grid-column: 1 / -1; border: 1px solid #b8cabd; border-radius: 8px; padding: 18px; background: #fff; }
+.run-results-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 13px; margin-bottom: 15px; border-bottom: 1px solid #d1dcd5; }
+.run-results-head h2 { margin: 0; color: #365c44; font-size: 15px; }
+#run-result-summary { color: #6c7d71; font-size: 11px; font-weight: 400; }
+#run-results #automatic-result { margin-top: 14px; max-height: none; padding: 14px 0 0; border: 0; border-top: 1px solid #d1dcd5; border-radius: 0; overflow: visible; }
+#manual-task-record { border-top: 1px solid #c5cfd0; padding-top: 13px; margin-top: 16px; }
+#manual-task-record > summary { cursor: pointer; color: #536c5b; font-size: 12px; }
+#manual-task-record .task-pane { padding: 16px 0 0; min-height: 0; }
 #automatic-result::before { display: none; }
 .account-disclosure { margin: 16px 0 0; border: 1px solid #c8d5cd; background: #f9fbfa; padding: 10px 14px; border-radius: 7px; }
 .account-disclosure > summary { font-size: 12px; color: #536c5b; cursor: pointer; }
@@ -112,7 +116,8 @@ body.has-book.nav-collapsed { --sidebar-width: 128px; }
     .book-pending { min-height: 45vh; padding: 32px 16px; }
     #workspace > h1 { font-size: 21px; }
     #content { padding: 22px; height: 55vh; }
-    #process-detail-count { display: block; margin-left: 0; margin-top: 5px; }
+    .run-results-head { align-items: flex-start; flex-direction: column; }
+    #run-results { padding: 14px; }
     .nav-collapsed aside { padding: 12px; }
     .nav-collapsed .chapter-browser .panel-head { padding: 8px 12px; }
     .nav-collapsed #chapters { display: flex; max-height: 100px; overflow: auto; }
