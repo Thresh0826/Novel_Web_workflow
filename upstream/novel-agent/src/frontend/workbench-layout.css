@@ -40,11 +40,12 @@ main { margin-left: var(--sidebar-width); max-width: none; min-height: 100vh; pa
 .chapter-state:empty { display: none; }
 [data-run-status="running"] .chapter-state, [data-run-status="queued"] .chapter-state { color: #8b641d; font-weight: 600; }
 [data-run-status="blocked"] .chapter-state, [data-run-status="failed"] .chapter-state { color: #9a4a3a; }
-.chapter-expand { width: 29px; flex-shrink: 0; border: 0; border-left: 1px solid #e0e7e2; background: #f4f7f5; color: #536b5c; font-size: 15px; cursor: pointer; }
-.chapter-expand:hover { background: #e1ebe4; }
-.chapter-detail { padding: 12px; background: #f3f7f4; border-top: 1px dashed #c4d2c8; font-size: 11px; line-height: 1.8; overflow-wrap: anywhere; }
+.chapter-row-head .chapter { display: block; }
+.chapter-basic { display: flex; align-items: center; gap: 7px; }
+.chapter-detail { display: block; padding: 10px 0 0; margin-top: 10px; border-top: 1px dashed #c4d2c8; font-size: 11px; line-height: 1.8; overflow-wrap: anywhere; }
 .chapter-detail strong { font-size: 12px; color: #345441; }
 .chapter-detail p { margin: 7px 0 0; color: #63776a; }
+.chapter-detail > span { display: block; margin-top: 6px; color: #63776a; }
 .chapter-detail .chapter-warning { color: #9b6038; }
 .chapter-file { font-family: Consolas, 'Microsoft YaHei', sans-serif; }
 .chapter-empty { padding: 20px 12px; font-size: 12px; color: #687b6d; }
@@ -66,6 +67,24 @@ main { margin-left: var(--sidebar-width); max-width: none; min-height: 100vh; pa
 .workflow-progress { margin-top: 4px; }
 .workflow-progress > p { font-size: 11px; }
 .stats { margin: 12px 0 20px; }
+/* One control expands or collapses the entire navigation, never individual rows. */
+body.has-book:not(.nav-collapsed) { --sidebar-width: 340px; }
+body.has-book.nav-collapsed { --sidebar-width: 128px; }
+#navigation-toggle { padding: 4px 7px; margin-left: auto; font-size: 11px; white-space: nowrap; }
+.chapter-browser #search { order: 3; }
+.nav-collapsed aside { padding: 18px 7px 12px; gap: 12px; }
+.nav-collapsed .brand { font-size: 13px; letter-spacing: 0; }
+.nav-collapsed .sub, .nav-collapsed .aside-foot, .nav-collapsed .shelf-caption, .nav-collapsed .shelf-hint { display: none; }
+.nav-collapsed #book-shelf > summary { padding: 10px 7px; }
+.nav-collapsed #book-shelf-label { font-size: 11px; }
+.nav-collapsed .chapter-browser .panel-head { padding: 10px 6px; gap: 5px; }
+.nav-collapsed .chapter-browser .panel-head h2 { font-size: 11px; }
+.nav-collapsed #search { display: none; }
+.nav-collapsed .chapter-row-head .chapter { padding: 12px 5px; font-size: 11px; }
+.nav-collapsed .chapter-row-head .chapter.selected { padding-left: 3px; border-left-width: 2px; }
+.nav-collapsed .chapter-basic { gap: 4px; white-space: nowrap; }
+.nav-collapsed .chapter-kind { padding: 0 3px; font-size: 9px; }
+.nav-collapsed .chapter-detail, .nav-collapsed .chapter-state { display: none; }
 @media (min-width: 1600px) {
     body.has-book { --sidebar-width: 280px; }
     main { padding: 26px 48px; }
@@ -77,6 +96,7 @@ main { margin-left: var(--sidebar-width); max-width: none; min-height: 100vh; pa
     .chapter-row-head .chapter { gap: 5px; padding-right: 5px; }
     .chapter-state { font-size: 9px; }
     .workflow-choices { grid-template-columns: 1fr; }
+    body.has-book:not(.nav-collapsed) { --sidebar-width: 300px; }
 }
 @media (max-width: 600px) {
     aside { position: static; width: auto; padding: 16px; overflow: visible; gap: 12px; border-right: 0; border-bottom: 2px solid #bcc8c4; }
@@ -93,4 +113,9 @@ main { margin-left: var(--sidebar-width); max-width: none; min-height: 100vh; pa
     #workspace > h1 { font-size: 21px; }
     #content { padding: 22px; height: 55vh; }
     #process-detail-count { display: block; margin-left: 0; margin-top: 5px; }
+    .nav-collapsed aside { padding: 12px; }
+    .nav-collapsed .chapter-browser .panel-head { padding: 8px 12px; }
+    .nav-collapsed #chapters { display: flex; max-height: 100px; overflow: auto; }
+    .nav-collapsed .chapter-item { flex: 0 0 auto; border-bottom: 0; border-right: 1px solid #dce4de; }
+    .nav-collapsed .chapter-basic { padding: 3px 8px; }
 }

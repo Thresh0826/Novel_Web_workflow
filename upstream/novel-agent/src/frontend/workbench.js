@@ -4,7 +4,6 @@ let revision = 0, selectionRevision = 0, taskLoadRevision = 0, materialFiles = [
 const reportDrafts = new Map();
 let activeRunId = null;
 let displayedRun = null;
-const expandedChapters = new Map();
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const stamp = value => new Date(value).toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai', month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
@@ -55,6 +54,7 @@ async function selectBook(id) {
     book = books.find(b => b.id === id);
     if(!book)return;
     document.body.classList.add('has-book');
+    setNavigationCollapsed(true);
     $('book-pending').hidden=true;
     $('workspace').hidden=false;
     document.querySelector('.chapter-browser').hidden=false;
@@ -102,23 +102,13 @@ function renderMaterials() {
 function renderChapters() {
     if(!book)return;
     const term = $('search').value.trim();
-    const expanded=expandedChapters.get(book.id)||new Set();
     $('chapters').innerHTML = book.chapters.filter(c => (c.draft?.[0] || c.outline?.[0] || '').includes(term) || String(c.number).includes(term)).map(c => {
         const title=(c.draft?.[0] || c.outline?.[0] || '').split('/').pop().replace(/\.md$/,'').replace(/^细纲[_：:]?/, '').replace(/^第[0-9一二三四五六七八九十百零〇两]+章[_：:\s]*/, '') || '细纲已准备';
-        const open=expanded.has(c.number), current=chapter?.number===c.number;
-        return `<div class="chapter-item ${current?'current':''}" data-chapter-row="${c.number}"><div class="chapter-row-head"><button class="chapter ${current?'selected':''}" data-chapter="${c.number}" aria-pressed="${current}"><span>第 ${c.number} 章</span><span class="chapter-kind">${c.draft?.length?'正文':'细纲'}</span><span class="chapter-state"></span></button><button class="chapter-expand" data-expand-chapter="${c.number}" aria-expanded="${open}" aria-controls="chapter-detail-${c.number}" aria-label="${open?'收起':'展开'}第${c.number}章详情">${open?'▴':'▾'}</button></div><div id="chapter-detail-${c.number}" class="chapter-detail" ${open?'':'hidden'}><strong>${esc(title)}</strong><p>${esc(c.status)}${c.stage?' · '+esc(c.stage):''}</p>${c.source_warning?'<p class="chapter-warning">阅读入口尚未确认此版本</p>':''}${[...(c.draft||[]),...(c.outline||[])].map(p=>`<p class="chapter-file">${esc(p)}</p>`).join('')}</div></div>`;
+        const current=chapter?.number===c.number;
+        return `<div class="chapter-item ${current?'current':''}" data-chapter-row="${c.number}"><div class="chapter-row-head"><button class="chapter ${current?'selected':''}" data-chapter="${c.number}" aria-pressed="${current}" title="第${c.number}章 · ${esc(title)}"><span class="chapter-basic"><span>第 ${c.number} 章</span><span class="chapter-kind">${c.draft?.length?'正文':'细纲'}</span><span class="chapter-state"></span></span><span class="chapter-detail"><strong>${esc(title)}</strong><span class="chapter-status">${esc(c.status)}${c.stage?' · '+esc(c.stage):''}</span>${c.source_warning?'<span class="chapter-warning">阅读入口尚未确认此版本</span>':''}${[...(c.draft||[]),...(c.outline||[])].map(p=>`<span class="chapter-file">${esc(p)}</span>`).join('')}</span></button></div></div>`;
     }).join('');
     if(!$('chapters').children.length)$('chapters').innerHTML='<p class="chapter-empty">没有匹配的章节</p>';
     document.querySelectorAll('[data-chapter]').forEach(el => el.onclick = () => selectChapter(Number(el.dataset.chapter)));
-    document.querySelectorAll('[data-expand-chapter]').forEach(el=>el.onclick=()=>{
-        const number=Number(el.dataset.expandChapter), next=el.getAttribute('aria-expanded')!=='true';
-        if(next)expanded.add(number);else expanded.delete(number);
-        expandedChapters.set(book.id,expanded);
-        el.setAttribute('aria-expanded',String(next));
-        el.setAttribute('aria-label',`${next?'收起':'展开'}第${number}章详情`);
-        el.textContent=next?'▴':'▾';
-        $(`chapter-detail-${number}`).hidden=!next;
-    });
     updateChapterRunBadges();
 }
 function rememberDraft() {
@@ -506,6 +496,16 @@ document.querySelector('aside .label').replaceWith(shelf);
 shelf.append($('books'));
 const chapterBrowser=document.querySelector('.layout > section:first-child');
 chapterBrowser.classList.add('chapter-browser');chapterBrowser.hidden=true;
+chapterBrowser.id='chapter-navigation';
+chapterBrowser.querySelector('h2').textContent='章节';
+chapterBrowser.querySelector('.panel-head').insertAdjacentHTML('beforeend','<button id="navigation-toggle" class="secondary" aria-controls="chapter-navigation" aria-expanded="false" title="展开整个章节导航栏">展开 »</button>');
+function setNavigationCollapsed(collapsed){
+    document.body.classList.toggle('nav-collapsed',collapsed);
+    $('navigation-toggle').setAttribute('aria-expanded',String(!collapsed));
+    $('navigation-toggle').textContent=collapsed?'展开 »':'« 收起';
+    $('navigation-toggle').title=collapsed?'展开整个章节导航栏':'收起整个章节导航栏';
+}
+$('navigation-toggle').onclick=()=>setNavigationCollapsed(!document.body.classList.contains('nav-collapsed'));
 shelf.after(chapterBrowser);
 const processing=document.createElement('details');
 processing.id='process-details';processing.innerHTML='<summary>处理详情 <span id="process-detail-count">报告、修改建议与运行日志</span></summary>';
