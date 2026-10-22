@@ -1,0 +1,12 @@
+{
+  "my-book": {
+    "title": "我的小说",
+    "root": "D:/my-novel",
+    "manuscript": "正文",
+    "outlines": ["章节细纲", "大纲"],
+    "genre": "自定义题材",
+    "focus": "以正文为事实依据，检查人物、设定与剧情连续性。",
+    "skills": {},
+    "core": ["设定/关系.md"]
+  }
+}
