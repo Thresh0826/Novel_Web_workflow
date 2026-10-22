@@ -4,6 +4,7 @@ let revision = 0, selectionRevision = 0, taskLoadRevision = 0, materialFiles = [
 const reportDrafts = new Map();
 let activeRunId = null;
 let displayedRun = null;
+const expandedChapters = new Map();
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const stamp = value => new Date(value).toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai', month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
@@ -39,7 +40,7 @@ function post(url, data) { return api(url, {method:'POST', headers:{'Content-Typ
 let toastTimer;
 function toast(message) { clearTimeout(toastTimer); $('toast').textContent = message; $('toast').style.display = 'block'; toastTimer = setTimeout(() => $('toast').style.display = 'none', 5200); }
 function renderBooks() {
-    $('books').innerHTML = books.map(b => `<button class="book ${book.id === b.id ? 'active' : ''}" data-book="${b.id}">${esc(b.title)}<small>${esc(b.genre)}</small></button>`).join('');
+    $('books').innerHTML = books.map(b => `<button class="book ${book?.id === b.id ? 'active' : ''}" data-book="${b.id}" aria-pressed="${book?.id === b.id}">${esc(b.title)}<small>${esc(b.genre)}</small></button>`).join('');
     document.querySelectorAll('[data-book]').forEach(el => el.onclick = () => selectBook(el.dataset.book));
 }
 function renderHeader() {
@@ -52,6 +53,15 @@ function renderHeader() {
 }
 async function selectBook(id) {
     book = books.find(b => b.id === id);
+    if(!book)return;
+    document.body.classList.add('has-book');
+    $('book-pending').hidden=true;
+    $('workspace').hidden=false;
+    document.querySelector('.chapter-browser').hidden=false;
+    $('book-shelf').open=false;
+    $('book-shelf-label').textContent=book.title;
+    $('book-shelf-label').title=book.title;
+    $('process-details').open=false;
     $('search').value = '';
     selectedMaterials = new Set();
     materialFiles = [];
@@ -60,6 +70,7 @@ async function selectBook(id) {
     renderHeader();
     const currentId = book.id;
     selectChapter(book.chapters.find(c => c.draft?.length && !c.source_warning)?.number ?? book.chapters[0]?.number);
+    pollChapterRuns();
     try {
         const data = await api(`/api/local/books/${currentId}/materials`);
         if (book.id !== currentId) return;
@@ -89,12 +100,26 @@ function renderMaterials() {
     document.querySelectorAll('[data-material]').forEach(el => el.onchange = () => el.checked ? selectedMaterials.add(el.dataset.material) : selectedMaterials.delete(el.dataset.material));
 }
 function renderChapters() {
+    if(!book)return;
     const term = $('search').value.trim();
+    const expanded=expandedChapters.get(book.id)||new Set();
     $('chapters').innerHTML = book.chapters.filter(c => (c.draft?.[0] || c.outline?.[0] || '').includes(term) || String(c.number).includes(term)).map(c => {
         const title=(c.draft?.[0] || c.outline?.[0] || '').split('/').pop().replace(/\.md$/,'').replace(/^细纲[_：:]?/, '').replace(/^第[0-9一二三四五六七八九十百零〇两]+章[_：:\s]*/, '') || '细纲已准备';
-        return `<button class="chapter ${chapter?.number === c.number ? 'selected' : ''}" data-chapter="${c.number}" aria-pressed="${chapter?.number === c.number}"><span class="name" title="${esc(title)}"><span class="num">${String(c.number).padStart(3,'0')}</span>${esc(title)}</span><small>${esc(c.status)}${c.stage ? ' · ' + esc(c.stage) : ''}${c.source_warning ? ' · 入口未确认' : ''}</small></button>`;
+        const open=expanded.has(c.number), current=chapter?.number===c.number;
+        return `<div class="chapter-item ${current?'current':''}" data-chapter-row="${c.number}"><div class="chapter-row-head"><button class="chapter ${current?'selected':''}" data-chapter="${c.number}" aria-pressed="${current}"><span>第 ${c.number} 章</span><span class="chapter-kind">${c.draft?.length?'正文':'细纲'}</span><span class="chapter-state"></span></button><button class="chapter-expand" data-expand-chapter="${c.number}" aria-expanded="${open}" aria-controls="chapter-detail-${c.number}" aria-label="${open?'收起':'展开'}第${c.number}章详情">${open?'▴':'▾'}</button></div><div id="chapter-detail-${c.number}" class="chapter-detail" ${open?'':'hidden'}><strong>${esc(title)}</strong><p>${esc(c.status)}${c.stage?' · '+esc(c.stage):''}</p>${c.source_warning?'<p class="chapter-warning">阅读入口尚未确认此版本</p>':''}${[...(c.draft||[]),...(c.outline||[])].map(p=>`<p class="chapter-file">${esc(p)}</p>`).join('')}</div></div>`;
     }).join('');
+    if(!$('chapters').children.length)$('chapters').innerHTML='<p class="chapter-empty">没有匹配的章节</p>';
     document.querySelectorAll('[data-chapter]').forEach(el => el.onclick = () => selectChapter(Number(el.dataset.chapter)));
+    document.querySelectorAll('[data-expand-chapter]').forEach(el=>el.onclick=()=>{
+        const number=Number(el.dataset.expandChapter), next=el.getAttribute('aria-expanded')!=='true';
+        if(next)expanded.add(number);else expanded.delete(number);
+        expandedChapters.set(book.id,expanded);
+        el.setAttribute('aria-expanded',String(next));
+        el.setAttribute('aria-label',`${next?'收起':'展开'}第${number}章详情`);
+        el.textContent=next?'▴':'▾';
+        $(`chapter-detail-${number}`).hidden=!next;
+    });
+    updateChapterRunBadges();
 }
 function rememberDraft() {
     if (selectedTask && $('report-content') && $('task-pane').dataset.taskId === selectedTask.id) reportDrafts.set(selectedTask.id, {content:$('report-content').value, reviewer:$('reviewer').value, verdict:$('verdict').value});
@@ -112,10 +137,14 @@ async function selectChapter(number) {
     $('automatic-run').textContent = workflowMode()==='outline'?'开始审阅细纲':'开始全面写作';
     renderPhases();
     $('automatic-result').textContent = '尚未启动本章任务。';
+    $('process-details').open=false;
+    $('process-detail-count').textContent='报告、修改建议与运行日志';
     $('stage').value = chapter?.draft?.length ? 'final' : 'outline';
     $('confirm-versions').checked = false;
     $('version-confirm').hidden = !book.chapters.some(c => c.source_warning && c.number <= number && c.number >= number - 3);
     renderChapters(); renderHistory(); renderContent();
+    const selected=document.querySelector('.chapter-item.current');
+    if(selected){const list=$('chapters'),top=selected.getBoundingClientRect().top-list.getBoundingClientRect().top+list.scrollTop;if(top<list.scrollTop||top+selected.offsetHeight>list.scrollTop+list.clientHeight)list.scrollTop=Math.max(0,top-list.clientHeight/2);}
     if (!chapter) return;
     loadReadiness(book.id, number);
     restoreRun(book.id, number, token);
@@ -147,6 +176,7 @@ async function loadTask(id, showReports = true) {
     renderHistory(); renderContent();
 }
 async function refresh() {
+    if(!book){books=await api('/api/local/books');renderBooks();return;}
     rememberDraft();
     const token = selectionRevision, id = book?.id, number = chapter?.number, taskId = selectedTask?.id;
     const data = await api('/api/local/books');
@@ -428,6 +458,9 @@ function renderPhases(run=null){
 }
 async function paintRun(run,token){
     displayedRun=run;
+    chapterRuns.set(`${run.book_id}:${run.chapter}`,run);
+    updateChapterRunBadges();
+    $('process-detail-count').textContent=`${(run.result?.reviews||run.result?.steps||[]).length} 份报告 · ${['blocked','failed'].includes(run.status)?'已暂停，点击查看原因':'点击查看详细内容'}`;
     renderPhases(run);
     document.querySelectorAll('[name="workflow-mode"],#max-revisions,#codex-model,#gemini-model').forEach(el=>el.disabled=['queued','running'].includes(run.status));
     const reviews=run.result?.reviews||run.result?.steps||[];
@@ -460,6 +493,43 @@ api('/api/local/models').then(data=>{
 style.textContent+=`
 .workflow-choices,.model-settings,.workflow-progress{grid-column:1/-1}.workflow-choices{display:grid;grid-template-columns:1fr 1fr;border:0;padding:0;gap:12px;margin:0}.workflow-choices legend{font-size:12px;margin-bottom:8px}.workflow-choices label{border:2px solid #becdc3;padding:14px;background:#fff;border-radius:8px;cursor:pointer}.workflow-choices label:has(input:checked){border-color:#28624e;background:#e0eee4}.workflow-choices input{width:auto;accent-color:#28624e;margin-right:8px}.workflow-choices label strong{font-size:15px}.workflow-choices span{font-size:12px;margin-top:8px}.model-settings{border-top:1px solid #afc2b5;padding-top:10px;font-size:12px}.model-settings label{display:block;margin:10px 0}.model-settings input,.model-settings select{width:auto;max-width:100%;padding:8px;border:1px solid #afbeb5;background:white;border-radius:5px}.model-settings input{width:300px}.model-settings p{line-height:1.9}.progress-caption{display:flex;justify-content:space-between;gap:10px;font-size:12px}.workflow-progress strong{font-size:13px}.workflow-progress progress{width:100%;height:12px;accent-color:#28624e}.phase-list{display:flex;gap:8px;flex-wrap:wrap;list-style:none;padding:0;margin:10px 0}.phase-list li{border:1px solid #bdc9c1;background:white;border-radius:5px;padding:5px 9px;font-size:12px;color:#66746b}.phase-list .done{background:#d7ebdf;color:#215239}.phase-list .active{background:#fff4db;border-color:#bf944c;color:#75501b;font-weight:bold}.workflow-progress>p{font-size:11px}.usage-panel{background:white;border:1px solid #c5cfd0;border-radius:8px;padding:13px 16px;margin:20px 0;display:grid;grid-template-columns:1fr auto;gap:10px;font-size:12px}.usage-panel span{display:block;color:#586861;margin-top:4px}#usage-details{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:20px}#usage-details>div+div{border-left:1px solid #c5cfd0;padding-left:20px}.markdown-reader{white-space:normal;overflow-wrap:anywhere;font:14px/1.95 'Segoe UI','Microsoft YaHei',sans-serif}.markdown-reader h1{font-size:23px;margin:18px 0}.markdown-reader h2{font-size:20px;margin:24px 0 12px;padding-bottom:8px;border-bottom:1px solid #c5cfd0}.markdown-reader h3{font-size:17px;margin:20px 0 10px}.markdown-reader p{margin:12px 0}.markdown-reader ul,.markdown-reader ol{padding-left:24px}.markdown-reader li{margin:6px 0}.markdown-reader blockquote{border-left:4px solid #7e9589;margin:15px 0;padding:4px 16px;background:#f0f5f1}.markdown-reader table{border-collapse:collapse;display:block;max-width:100%;overflow:auto;margin:18px 0}.markdown-reader th,.markdown-reader td{border:1px solid #bbc9c0;padding:9px 12px}.markdown-reader th{background:#e9efec}.markdown-reader pre{height:auto;white-space:pre;overflow:auto;padding:15px;background:#eff3f1;border-radius:6px}.markdown-reader code{font-family:Consolas,monospace;background:#eff3f1;padding:2px 4px}.markdown-reader hr{border:0;border-top:2px solid #bac7c2;margin:24px 0}#content{overflow:auto}#content.source-view{white-space:pre-wrap}.run-review{border:1px solid #bac7c2;border-radius:6px;padding:12px;margin:14px 0;background:white}.run-review summary{font-weight:600;cursor:pointer}.run-review[open] summary{border-bottom:1px solid #c5cfd0;padding-bottom:10px;margin-bottom:12px}.failure-reason{border-left:4px solid #b65a46;padding-left:14px}.artifact-links{display:flex;gap:10px;flex-wrap:wrap;margin-top:15px}.artifact-links a{border:1px solid #bac7c2;padding:5px 10px;border-radius:5px;color:#28624e}#automatic-result{white-space:normal;max-height:600px}.run-card .primary{grid-column:2;grid-row:2;align-self:start}.usage-panel+ h1{margin-top:20px}@media(max-width:650px){.workflow-choices,#usage-details{grid-template-columns:1fr}#usage-details>div+div{border:0;border-top:1px solid #c5cfd0;padding:12px 0 0}.progress-caption{flex-direction:column}.run-card .primary{grid-column:1;grid-row:auto}.run-card{grid-template-columns:1fr}}
 `;
+const workspace=document.createElement('section');
+workspace.id='workspace'; workspace.hidden=true;
+const main=document.querySelector('main');
+for(const child of [...main.children])if(!child.classList.contains('top'))workspace.append(child);
+main.append(workspace);
+main.insertAdjacentHTML('beforeend','<section id="book-pending" class="book-pending"><div class="pending-book-icon" aria-hidden="true">▤</div><h1>书籍待选择</h1><p>从左侧选择一本书，开始查看章节与写作任务。</p></section>');
+const shelf=document.createElement('details');
+shelf.id='book-shelf';shelf.open=true;
+shelf.innerHTML='<summary><span class="shelf-caption">我的书籍</span><strong id="book-shelf-label">选择一本书</strong><span class="shelf-hint">点击切换</span></summary>';
+document.querySelector('aside .label').replaceWith(shelf);
+shelf.append($('books'));
+const chapterBrowser=document.querySelector('.layout > section:first-child');
+chapterBrowser.classList.add('chapter-browser');chapterBrowser.hidden=true;
+shelf.after(chapterBrowser);
+const processing=document.createElement('details');
+processing.id='process-details';processing.innerHTML='<summary>处理详情 <span id="process-detail-count">报告、修改建议与运行日志</span></summary>';
+$('automatic-result').before(processing);processing.append($('automatic-result'));
+const account=document.createElement('details');account.className='account-disclosure';
+account.innerHTML='<summary>账号与额度</summary>';
+document.querySelector('.usage-panel').before(account);account.append(document.querySelector('.usage-panel'));
+const layoutCss=document.createElement('link');layoutCss.rel='stylesheet';layoutCss.href='/workbench-layout.css';document.head.append(layoutCss);
+const chapterRuns=new Map();let chapterRunPollBusy=false;
+function updateChapterRunBadges(){
+    if(!book)return;
+    document.querySelectorAll('[data-chapter-row]').forEach(row=>{
+        const run=chapterRuns.get(`${book.id}:${row.dataset.chapterRow}`);
+        const label=run?({queued:'排队',running:'处理中',completed:'已完成',needs_author:'待确认',blocked:'已暂停',failed:'未完成'}[run.status]||''):'';
+        row.querySelector('.chapter-state').textContent=label;
+        row.dataset.runStatus=run?.status||'';
+    });
+}
+async function pollChapterRuns(){
+    if(!book||chapterRunPollBusy||document.hidden)return;
+    const id=book.id;chapterRunPollBusy=true;
+    try{const runs=await api(`/api/local/books/${id}/runs`);const seen=new Set();for(const run of runs){if(run.chapter<1||seen.has(run.chapter))continue;seen.add(run.chapter);chapterRuns.set(`${id}:${run.chapter}`,run);}if(book?.id===id)updateChapterRunBadges();}catch{}finally{chapterRunPollBusy=false;}
+}
+setInterval(pollChapterRuns,5000);
 renderPhases();loadUsage();
 loadTrackingSync(true);
-api('/api/local/books').then(data => { books = data; if(!books.length){$('title').textContent='先连接你的小说项目';$('root').textContent='复制 books.example.json 为 books.local.json，填入项目目录后重启工作台。';$('provider-status').textContent='尚未配置书籍';$('automatic-run').disabled=true;return;} selectBook(books.some(b=>b.id==='market')?'market':books[0].id); }).catch(error => { $('title').textContent = '目录读取失败'; toast(error.message); });
+api('/api/local/books').then(data => { books=data;renderBooks();if(!books.length){$('book-pending').querySelector('h1').textContent='先连接你的小说项目';$('book-pending').querySelector('p').textContent='复制 books.example.json 为 books.local.json，填入项目目录后重启工作台。';} }).catch(error => { $('book-pending').querySelector('h1').textContent='书籍目录读取失败';toast(error.message); });

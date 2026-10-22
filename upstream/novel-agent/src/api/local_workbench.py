@@ -17,6 +17,11 @@ from pydantic import BaseModel, Field
 from ..storage import workbench_store as store
 
 router = APIRouter()
+
+
+@router.get('/workbench-layout.css')
+def workspace_layout_css():
+    return FileResponse(Path(__file__).parents[1] / 'frontend/workbench-layout.css', headers={'Cache-Control':'no-store'})
 RUN_POOL = ThreadPoolExecutor(max_workers=1, thread_name_prefix="novel-run")
 RUN_LOCK = threading.Lock()
 SKILLS = Path.home() / ".codex" / "skills"
